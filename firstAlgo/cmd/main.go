@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	charSet    = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-={}|;:,.<>?"
 	fileALines = 12
 	wordSize   = 20
+	separator  = keySize + 1
 )
 
 type FileData struct {
@@ -26,11 +28,11 @@ type FileData struct {
 }
 
 func generateRandomWord(charSet string, size int) string {
-	set := ""
+	var builder strings.Builder
 	for range size {
-		set += string(charSet[rand.Intn(len(charSet))])
+		builder.WriteByte(charSet[rand.Intn(len(charSet))])
 	}
-	return set
+	return builder.String()
 }
 
 func generateRandomDate() string {
@@ -50,7 +52,7 @@ func generateRandomDate() string {
 }
 
 func generateRandomLine() string {
-	return fmt.Sprintf("%d\t%s\t%s", (rand.Intn(keySize)),
+	return fmt.Sprintf("%d\t%s\t%s", rand.Intn(keySize),
 		generateRandomWord(charSet, wordSize), generateRandomDate())
 }
 
@@ -103,19 +105,31 @@ func distributeRuns(sourceFile, fileB, fileC string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to open %s: %w", sourceFile, err)
 	}
-	defer fileA.Close()
+	defer func(fileA *os.File) {
+		if err := fileA.Close(); err != nil {
+			log.Printf("failed to close fileA: %w", err)
+		}
+	}(fileA)
 
 	outB, err := os.Create(fileB)
 	if err != nil {
 		return false, fmt.Errorf("failed to create %s: %w", fileB, err)
 	}
-	defer outB.Close()
+	defer func(outB *os.File) {
+		if err := outB.Close(); err != nil {
+			log.Printf("failed to close outB: %w", err)
+		}
+	}(outB)
 
 	outC, err := os.Create(fileC)
 	if err != nil {
 		return false, fmt.Errorf("failed to create %s: %w", fileC, err)
 	}
-	defer outC.Close()
+	defer func(outC *os.File) {
+		if err := outC.Close(); err != nil {
+			log.Printf("failed to close outC: %w", err)
+		}
+	}(outC)
 
 	scanner := bufio.NewScanner(fileA)
 	prevKey := 0
@@ -126,7 +140,7 @@ func distributeRuns(sourceFile, fileB, fileC string) (bool, error) {
 		line := scanner.Text()
 		data, err := parseRandomLine(line)
 		if err != nil {
-			return false, fmt.Errorf("Failed to parse line: %w", err)
+			return false, fmt.Errorf("failed to parse line: %w", err)
 		}
 
 		if data.Key < prevKey {
@@ -154,19 +168,34 @@ func mergeFiles(destFile, fileB, fileC string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", fileB, err)
 	}
-	defer inB.Close()
+	defer func(inB *os.File) {
+		err := inB.Close()
+		if err != nil {
+			log.Printf("failed to close inB: %w", err)
+		}
+	}(inB)
 
 	inC, err := os.Open(fileC)
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", fileC, err)
 	}
-	defer inC.Close()
+	defer func(inC *os.File) {
+		err := inC.Close()
+		if err != nil {
+			log.Printf("failed to close inC: %w", err)
+		}
+	}(inC)
 
 	out, err := os.Create(destFile)
 	if err != nil {
 		return fmt.Errorf("failed to create %s: %w", destFile, err)
 	}
-	defer out.Close()
+	defer func(out *os.File) {
+		err := out.Close()
+		if err != nil {
+			log.Printf("failed to close out: %w", err)
+		}
+	}(out)
 
 	scannerB := bufio.NewScanner(inB)
 	scannerC := bufio.NewScanner(inC)
@@ -183,15 +212,21 @@ func mergeFiles(destFile, fileB, fileC string) error {
 	for hasB || hasC {
 		if hasB {
 			lineB = scannerB.Text()
-			dataB, _ = parseRandomLine(lineB)
-			if dataB.Key == keySize+1 {
+			dataB, err = parseRandomLine(lineB)
+			if err != nil {
+				return fmt.Errorf("failed to parse line: %w", err)
+			}
+			if dataB.Key == separator {
 				flagB = true
 			}
 		}
 		if hasC {
 			lineC = scannerC.Text()
-			dataC, _ = parseRandomLine(lineC)
-			if dataC.Key == keySize+1 {
+			dataC, err = parseRandomLine(lineC)
+			if err != nil {
+				return fmt.Errorf("failed to parse line: %w", err)
+			}
+			if dataC.Key == separator {
 				flagC = true
 			}
 		}
@@ -205,33 +240,51 @@ func mergeFiles(destFile, fileB, fileC string) error {
 				continue
 			}
 			if flagB {
-				out.WriteString(lineC + "\n")
+				_, err := out.WriteString(lineC + "\n")
+				if err != nil {
+					return err
+				}
 				hasC = scannerC.Scan()
 				continue
 			}
 			if flagC {
-				out.WriteString(lineB + "\n")
+				_, err := out.WriteString(lineB + "\n")
+				if err != nil {
+					return err
+				}
 				hasB = scannerB.Scan()
 				continue
 			}
 			if dataB.Key <= dataC.Key {
-				out.WriteString(lineB + "\n")
+				_, err := out.WriteString(lineB + "\n")
+				if err != nil {
+					return err
+				}
 				hasB = scannerB.Scan()
 			} else {
-				out.WriteString(lineC + "\n")
+				_, err := out.WriteString(lineC + "\n")
+				if err != nil {
+					return err
+				}
 				hasC = scannerC.Scan()
 			}
 		} else if hasB {
-			if dataB.Key == keySize+1 {
+			if dataB.Key == separator {
 				break
 			}
-			out.WriteString(lineB + "\n")
+			_, err := out.WriteString(lineB + "\n")
+			if err != nil {
+				return err
+			}
 			hasB = scannerB.Scan()
 		} else if hasC {
-			if dataC.Key == keySize+1 {
+			if dataC.Key == separator {
 				break
 			}
-			out.WriteString(lineC + "\n")
+			_, err := out.WriteString(lineC + "\n")
+			if err != nil {
+				return err
+			}
 			hasC = scannerC.Scan()
 		}
 	}
@@ -247,7 +300,7 @@ func sortFile(filePath string) error {
 	for {
 		sorted, err := distributeRuns(filePath, tempFileB, tempFileC)
 		if err != nil {
-			return fmt.Errorf("Failed to distribute runs: %w", err)
+			return fmt.Errorf("failed to distribute runs: %w", err)
 		}
 
 		if sorted {
@@ -261,6 +314,10 @@ func sortFile(filePath string) error {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	generateRandomFileA()
-	sortFile("A.txt")
+	err := sortFile("A.txt")
+	if err != nil {
+		return
+	}
 }
