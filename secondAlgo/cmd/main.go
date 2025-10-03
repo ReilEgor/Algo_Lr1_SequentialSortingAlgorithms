@@ -413,11 +413,11 @@ func main() {
 	debug.SetMemoryLimit(300 * 1024 * 1024)
 	monitorMemory()
 	rand.Seed(time.Now().UnixNano())
-	//generateRandomFileA()
-	source := "A.txt"
-
-	if err := sortFile(source); err != nil {
-		log.Fatalf("external sort failed: %v", err)
-	}
+	generateRandomFileA()
+	//source := "A.txt"
+	//
+	//if err := sortFile(source); err != nil {
+	//	log.Fatalf("external sort failed: %v", err)
+	//}
 	fmt.Printf("Sorting completed in %.2f seconds\n", time.Since(currtime).Seconds())
 }
