@@ -8,15 +8,17 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	keySize    = 12
+	keySize    = 99999
 	charSet    = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-={}|;:,.<>?"
-	fileALines = 12
+	fileALines = 99999
 	wordSize   = 20
 	separator  = keySize + 1
 )
@@ -145,10 +147,10 @@ func distributeRuns(sourceFile, fileB, fileC string) (bool, error) {
 
 		if data.Key < prevKey {
 			if currOutput == outB {
-				_, _ = currOutput.WriteString(fmt.Sprintf("%d\t%s\t%s", keySize+1, data.Word, data.Date) + "\n")
+				_, _ = currOutput.WriteString(fmt.Sprintf("%d\t%s\t%s\n", keySize+1, data.Word, data.Date))
 				currOutput = outC
 			} else {
-				_, _ = currOutput.WriteString(fmt.Sprintf("%d\t%s\t%s", keySize+1, data.Word, data.Date) + "\n")
+				_, _ = currOutput.WriteString(fmt.Sprintf("%d\t%s\t%s\n", keySize+1, data.Word, data.Date))
 				currOutput = outB
 			}
 			sorted = false
@@ -312,12 +314,33 @@ func sortFile(filePath string) error {
 		}
 	}
 }
+func monitorMemory() {
+	go func() {
+		for {
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
 
+			currentMB := m.Alloc / 1024 / 1024
+			if currentMB > 300 {
+				fmt.Printf("EXCEEDED LIMIT: %d MB > 300 MB\n", currentMB)
+			} else {
+				fmt.Printf("Memory is normal: %d MB / 300 MB\n", currentMB)
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
+}
 func main() {
+	currtime := time.Now()
+	debug.SetMemoryLimit(300 * 1024 * 1024)
+	monitorMemory()
 	rand.Seed(time.Now().UnixNano())
-	generateRandomFileA()
+	//generateRandomFileA()
 	err := sortFile("A.txt")
 	if err != nil {
 		return
 	}
+	//time.Sleep(2 * time.Second)
+	fmt.Println(currtime.Sub(time.Now()).Seconds() * -1)
 }
